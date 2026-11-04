@@ -15,6 +15,7 @@ const describeEmbeddedPostgres = support.supported ? describe : describe.skip;
 const GOVERNANCE_ACTIONS = [
   "agent_config:update",
   "agent_instructions:update",
+  "skill_config:update",
   "agents:configure",
 ] as const;
 const AGENT_IDENTITIES = ["agent_key", "agent_jwt"] as const;

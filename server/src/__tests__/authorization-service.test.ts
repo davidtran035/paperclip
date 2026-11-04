@@ -335,61 +335,24 @@ describeEmbeddedPostgres("authorization service", () => {
     }
   });
 
-  it("enforces direct or consented suggest grants for skill configuration changes", async () => {
+  it("denies skill configuration changes to agents whatever grant or consent they hold", async () => {
     const company = await createCompany(db, "SkillChangeGrant");
     const directAgent = await createAgent(db, company.id);
     const suggestAgent = await createAgent(db, company.id);
-    const noGrantAgent = await createAgent(db, company.id);
     await grantAgentPermission(db, company.id, directAgent.id, "skills:create");
     await grantAgentPermission(db, company.id, suggestAgent.id, "skills:suggest-changes");
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
-      principalType: "agent",
-      principalId: noGrantAgent.id,
-      status: "active",
-      membershipRole: "member",
-    });
 
     const authz = authorizationService(db);
-    await expect(authz.decide({
-      actor: { type: "agent", agentId: directAgent.id, companyId: company.id, source: "agent_key" },
-      action: "skill_config:update",
-      resource: { type: "company", companyId: company.id },
-    })).resolves.toMatchObject({
-      allowed: true,
-      reason: "allow_direct_change",
-      grant: { permissionKey: "skills:create" },
-    });
-
-    await expect(authz.decide({
-      actor: { type: "agent", agentId: suggestAgent.id, companyId: company.id, source: "agent_key" },
-      action: "skill_config:update",
-      resource: { type: "company", companyId: company.id },
-    })).resolves.toMatchObject({
-      allowed: false,
-      reason: "deny_missing_consent",
-      grant: { permissionKey: "skills:suggest-changes" },
-    });
-
-    await expect(authz.decide({
-      actor: { type: "agent", agentId: suggestAgent.id, companyId: company.id, source: "agent_key" },
-      action: "skill_config:update",
-      resource: { type: "company", companyId: company.id },
-      scope: { consentedChange: true },
-    })).resolves.toMatchObject({
-      allowed: true,
-      reason: "allow_consented_change",
-      grant: { permissionKey: "skills:suggest-changes" },
-    });
-
-    await expect(authz.decide({
-      actor: { type: "agent", agentId: noGrantAgent.id, companyId: company.id, source: "agent_key" },
-      action: "skill_config:update",
-      resource: { type: "company", companyId: company.id },
-    })).resolves.toMatchObject({
-      allowed: false,
-      reason: "deny_no_grant",
-    });
+    for (const actorAgent of [directAgent, suggestAgent]) {
+      for (const scope of [{}, { consentedChange: true }]) {
+        await expect(authz.decide({
+          actor: { type: "agent", agentId: actorAgent.id, companyId: company.id, source: "agent_key" },
+          action: "skill_config:update",
+          resource: { type: "company", companyId: company.id },
+          scope,
+        })).resolves.toMatchObject({ allowed: false, reason: "deny_board_only_agent_governance" });
+      }
+    }
   });
 
   it("allows board users with direct skills:create grants to mutate company skills", async () => {
@@ -419,7 +382,7 @@ describeEmbeddedPostgres("authorization service", () => {
     });
   });
 
-  it("allows responsible-user JWT agents with direct skills:create grants to mutate company skills", async () => {
+  it("denies responsible-user JWT agents company skill changes even with a direct grant", async () => {
     const company = await createCompany(db, "ResponsibleUserSkillGrant");
     const actorAgent = await createAgent(db, company.id);
     const responsibleUserId = await createUser(db);
@@ -444,15 +407,7 @@ describeEmbeddedPostgres("authorization service", () => {
       resource: { type: "company", companyId: company.id },
     });
 
-    expect(decision).toMatchObject({
-      allowed: true,
-      reason: "allow_direct_change",
-      grant: {
-        principalType: "agent",
-        principalId: actorAgent.id,
-        permissionKey: "skills:create",
-      },
-    });
+    expect(decision).toMatchObject({ allowed: false, reason: "deny_board_only_agent_governance" });
   });
 
   it("keeps responsible-user skill mutations denied for viewer memberships", async () => {
@@ -480,11 +435,7 @@ describeEmbeddedPostgres("authorization service", () => {
       resource: { type: "company", companyId: company.id },
     });
 
-    expect(decision).toMatchObject({
-      allowed: false,
-      code: "RESPONSIBLE_USER_UNAUTHORIZED",
-    });
-    expect(decision.explanation).toContain(`Responsible user ${responsibleUserId} is not authorized`);
+    expect(decision).toMatchObject({ allowed: false, reason: "deny_board_only_agent_governance" });
   });
 
   it("denies cross-company agent decisions before grant evaluation", async () => {
@@ -1142,7 +1093,7 @@ describeEmbeddedPostgres("authorization service", () => {
       action: "skill_config:update",
       resource: { type: "company", companyId: company.id },
       scope: { consentedChange: true },
-    })).resolves.toMatchObject({ allowed: false, reason: "deny_low_trust_boundary" });
+    })).resolves.toMatchObject({ allowed: false, reason: "deny_board_only_agent_governance" });
   });
 
   it("hard-blocks assignment when the target agent blocks protected assignment", async () => {

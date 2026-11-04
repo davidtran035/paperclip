@@ -433,6 +433,25 @@ describe("decideQueuedRunStaleness", () => {
     expect(decideQueuedRunStaleness(facts, NOW)).toEqual({ stale: false });
   });
 
+  it.each(["blocked", "done", "cancelled"])("withholds a comment wake for the assignee of a %s task", (issueStatus) => {
+    expect(decideQueuedRunStaleness({
+      ...baseStalenessFacts(),
+      issueAssigneeAgentId: "agent-1",
+      wakeCommentIdPresent: true,
+      issueStatus,
+    }, NOW)).toMatchObject({ stale: true });
+  });
+
+  it.each(["blocked", "done", "cancelled"])("lets an explicit reopen of a %s task run for its assignee", (issueStatus) => {
+    expect(decideQueuedRunStaleness({
+      ...baseStalenessFacts(),
+      issueAssigneeAgentId: "agent-1",
+      wakeCommentIdPresent: true,
+      resumeIntent: true,
+      issueStatus,
+    }, NOW)).toMatchObject({ stale: false });
+  });
+
   it("allows a comment wake to bypass the ownership, terminal-status, and review-participant checks", () => {
     const facts: QueuedRunFacts = {
       ...baseStalenessFacts(),

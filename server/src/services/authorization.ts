@@ -99,6 +99,7 @@ export type AuthorizationAction =
 const BOARD_ONLY_AGENT_GOVERNANCE_ACTIONS: ReadonlySet<AuthorizationAction> = new Set<AuthorizationAction>([
   "agent_config:update",
   "agent_instructions:update",
+  "skill_config:update",
   "agents:configure",
 ]);
 
@@ -2079,7 +2080,7 @@ export function authorizationService(db: Db | DbTransaction) {
         explanation: "Agent key cannot access another company.",
       });
     }
-    // Budget, schedule, model, role, grants and instructions decide what an agent may spend and do,
+    // Budget, schedule, model, role, grants, instructions and skills decide what an agent may spend and do,
     // so no agent identity may change them, its own included. No grant or consent path reaches past this.
     if (BOARD_ONLY_AGENT_GOVERNANCE_ACTIONS.has(input.action)) {
       return deny({

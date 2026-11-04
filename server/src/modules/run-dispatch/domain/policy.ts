@@ -509,6 +509,7 @@ const WAKE_REASONS_RESUMING_BLOCKED_ISSUE: ReadonlySet<string> = new Set([
   "issue_recovery_action_restored",
   "issue_tree_resumed",
   "issue_tree_restored",
+  "retry_failed_run",
 ]);
 
 export function wakeMayResumeBlockedIssue(wakeReason: string | null | undefined): boolean {
@@ -634,7 +635,11 @@ export function decideQueuedRunStaleness(
       details: { issueId: facts.issueId, currentExecutionRunId: facts.issueExecutionRunId, currentCheckoutRunId: facts.issueCheckoutRunId ?? null } };
   }
 
-  if (facts.issueStatus === "blocked" && !facts.resumeIntent && !facts.wakeCommentIdPresent &&
+  // A comment is new input for an agent it mentions. The assignee of a stopped task still needs a
+  // board reopen, so a note on that task cannot repeat the finished work.
+  const wakeCommentMayRun = facts.wakeCommentIdPresent && facts.issueAssigneeAgentId !== facts.runAgentId;
+
+  if (facts.issueStatus === "blocked" && !facts.resumeIntent && !wakeCommentMayRun &&
       !wakeMayResumeBlockedIssue(facts.wakeReason) &&
       !(facts.wakeReason === "issue_unblock_requested" && facts.issueAssigneeAgentId !== facts.runAgentId)) {
     return { stale: true, errorCode: "issue_blocked",
@@ -646,7 +651,7 @@ export function decideQueuedRunStaleness(
   const statusOutcome = decideIssueStatus({
     status: facts.issueStatus,
     requiresInProgress,
-    terminalBypass: facts.resumeIntent || facts.wakeCommentIdPresent || (
+    terminalBypass: facts.resumeIntent || wakeCommentMayRun || (
       facts.isCompletedOnboardingHandoffWake === true &&
       facts.wakeReason === "issue_children_completed" && facts.issueStatus === "done"
     ),

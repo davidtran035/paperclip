@@ -18219,13 +18219,6 @@ export function issueRoutes(
       const reopenRequested = req.body.reopen === true;
       const resumeRequested = req.body.resume === true;
       const interruptRequested = req.body.interrupt === true;
-      if (
-        req.actor.type === "agent" &&
-        STOPPED_ISSUE_STATUSES.has(issue.status) &&
-        (reopenRequested || resumeRequested)
-      ) {
-        throw forbidden("Only the board can reopen a stopped task");
-      }
       const isClosed = isClosedIssueStatus(issue.status);
       const isBlocked = issue.status === "blocked";
       const crossIssueCommentOnlyGrant =
@@ -18244,6 +18237,14 @@ export function issueRoutes(
       const effectiveResumeRequested = crossIssueCommentOnlyGrant
         ? false
         : resumeRequested;
+      // A direct-parent report stays a plain comment above; anything still asking to reopen is refused.
+      if (
+        req.actor.type === "agent" &&
+        STOPPED_ISSUE_STATUSES.has(issue.status) &&
+        (effectiveReopenRequested || effectiveResumeRequested)
+      ) {
+        throw forbidden("Only the board can reopen a stopped task");
+      }
       if (
         isClosed &&
         req.actor.type === "agent" &&

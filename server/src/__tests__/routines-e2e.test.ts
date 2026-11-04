@@ -325,7 +325,7 @@ describeEmbeddedPostgres("routine routes end-to-end", () => {
     expect(await db.select().from(activityLog)).toEqual([]);
   }, 20_000);
 
-  it("preserves UUID routine reads and assignee-only mutations", async () => {
+  it("preserves UUID routine reads and keeps mutations board-only", async () => {
     const { companyId, agentId, userId } = await seedFixture();
     const routineId = randomUUID();
     const triggerId = randomUUID();
@@ -344,8 +344,7 @@ describeEmbeddedPostgres("routine routes end-to-end", () => {
       expect(response.status, JSON.stringify(response.body)).toBe(index < 2 ? 200 : 403);
     }
     const updated = await request(owner).patch(`/api/routines/${routineId}`).send({ title: "Owner update" });
-    expect(updated.status, JSON.stringify(updated.body)).toBe(200);
-    expect(updated.body.title).toBe("Owner update");
+    expect(updated.status, JSON.stringify(updated.body)).toBe(403);
     const changedTrigger = await request(board).patch(`/api/routine-triggers/${triggerId}`).send({ enabled: false });
     expect(changedTrigger.status, JSON.stringify(changedTrigger.body)).toBe(200);
     expect(changedTrigger.body.enabled).toBe(false);
