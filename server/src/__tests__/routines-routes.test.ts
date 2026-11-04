@@ -484,7 +484,7 @@ describe("routine routes", () => {
     expect(mockRoutineService.listRevisions).not.toHaveBeenCalled();
   });
 
-  it("restores routine revisions with existing routine-management permissions", async () => {
+  it("refuses a routine revision restore by the assigned agent", async () => {
     const app = await createApp({
       type: "agent",
       agentId,
@@ -494,17 +494,8 @@ describe("routine routes", () => {
 
     const res = await request(app).post(`/api/routines/${routineId}/revisions/${revisionId}/restore`).send({});
 
-    expect(res.status).toBe(200);
-    expect(mockRoutineService.restoreRevision).toHaveBeenCalledWith(routineId, revisionId, {
-      agentId,
-      userId: null,
-      runId: "88888888-8888-4888-8888-888888888888",
-    });
-    expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      action: "routine.revision_restored",
-      entityId: routineId,
-      runId: "88888888-8888-4888-8888-888888888888",
-    }));
+    expect(res.status).toBe(403);
+    expect(mockRoutineService.restoreRevision).not.toHaveBeenCalled();
   });
 
   it("requires tasks:assign permission for non-admin board routine creation", async () => {

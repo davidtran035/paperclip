@@ -631,12 +631,10 @@ describeEmbeddedPostgres("built-in agents", () => {
     // the root/company default permissions.
     const result = await reconcileBuiltInAgentsOnStartup(db);
     expect(result.autoEnsured).toBeGreaterThanOrEqual(1);
-    expect(result.defaultGrantsEnsured).toBeGreaterThanOrEqual(4);
+    expect(result.defaultGrantsEnsured).toBeGreaterThanOrEqual(2);
 
     const rootGrantKeys = await permissionKeysForAgent(root.id);
-    expect(rootGrantKeys).toEqual(expect.arrayContaining([
-      "agents:configure", "agents:suggest-changes", "skills:create", "skills:suggest-changes",
-    ]));
+    expect(rootGrantKeys).toEqual([]);
 
     const state = await builtInAgentService(db).get(companyId, "reflection-coach");
     expect(state).toMatchObject({

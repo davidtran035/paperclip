@@ -833,6 +833,8 @@ export interface WakeupOptions {
   reason?: string | null;
   payload?: Record<string, unknown> | null;
   idempotencyKey?: string | null;
+  /** Set only by API wake routes: applies duplicate-operation and stopped-task admission. */
+  callerAdmission?: { operationKey: string | null };
   requestedByActorType?: "user" | "agent" | "system";
   requestedByActorId?: string | null;
   contextSnapshot?: Record<string, unknown>;

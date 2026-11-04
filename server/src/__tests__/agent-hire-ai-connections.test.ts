@@ -70,6 +70,13 @@ async function fixture(provider: "anthropic" | "openai", method: "api_key" | "su
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
+    // Configuration changes and adapter tests are board-only, so they run as the responsible user.
+    if (req.method === "PATCH" || req.path.includes("/test-environment")) {
+      req.actor = { type: "board", userId, companyIds: [companyId], source: "session", isInstanceAdmin: false,
+        memberships: [{ companyId, status: "active", membershipRole: "owner" }] } as typeof req.actor;
+      next();
+      return;
+    }
     req.actor = { type: "agent", agentId, companyId, runId: run!.id, source: "agent_jwt", onBehalfOfUserId: userId, onBehalfOfMemberships: [{ companyId, membershipRole: "owner", status: "active" }] };
     next();
   });

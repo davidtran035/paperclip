@@ -44,6 +44,7 @@ export type {
   CancelStaleQueuedRunOutcome,
 } from "./application/types.js";
 export { RunDispatchApplicationError } from "./application/types.js";
+export { wakeMayResumeBlockedIssue } from "./domain/policy.js";
 
 export type RunDispatchDeps = {
   /** Overrides the Postgres adapter; a test builds its module against a fake instead. */

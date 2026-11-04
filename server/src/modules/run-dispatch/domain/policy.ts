@@ -496,6 +496,25 @@ export function decideScheduledRetryGate(
  * caller passes now for signature symmetry with future clock-dependent
  * rules; today's rules need no clock read.
  */
+/**
+ * Server-issued wakes that mean the reason for blocking is gone. Every other wake on a blocked
+ * task is refused, so a repeated wake cannot restart a stopped task. The board reopens it instead.
+ */
+const WAKE_REASONS_RESUMING_BLOCKED_ISSUE: ReadonlySet<string> = new Set([
+  "approval_approved",
+  "issue_blockers_resolved",
+  "issue_children_completed",
+  "issue_monitor_due",
+  "issue_monitor_recovery",
+  "issue_recovery_action_restored",
+  "issue_tree_resumed",
+  "issue_tree_restored",
+]);
+
+export function wakeMayResumeBlockedIssue(wakeReason: string | null | undefined): boolean {
+  return typeof wakeReason === "string" && WAKE_REASONS_RESUMING_BLOCKED_ISSUE.has(wakeReason);
+}
+
 export function decideQueuedRunStaleness(
   facts: QueuedRunFacts,
   _now: Date,
@@ -613,6 +632,14 @@ export function decideQueuedRunStaleness(
     return { stale: true, errorCode: "issue_execution_lock_changed",
       reason: "Cancelled because another run owns task execution or checkout before replacement dispatch",
       details: { issueId: facts.issueId, currentExecutionRunId: facts.issueExecutionRunId, currentCheckoutRunId: facts.issueCheckoutRunId ?? null } };
+  }
+
+  if (facts.issueStatus === "blocked" && !facts.resumeIntent && !facts.wakeCommentIdPresent &&
+      !wakeMayResumeBlockedIssue(facts.wakeReason) &&
+      !(facts.wakeReason === "issue_unblock_requested" && facts.issueAssigneeAgentId !== facts.runAgentId)) {
+    return { stale: true, errorCode: "issue_blocked",
+      reason: "Cancelled because a blocked task needs a board reopen before it can run again",
+      details: { issueId: facts.issueId, wakeReason: facts.wakeReason } };
   }
 
   const requiresInProgress = facts.retryReasonKind === "max_turn_continuation";

@@ -96,6 +96,12 @@ export type AuthorizationAction =
   | "secrets:read"
   | "secrets:propose";
 
+const BOARD_ONLY_AGENT_GOVERNANCE_ACTIONS: ReadonlySet<AuthorizationAction> = new Set<AuthorizationAction>([
+  "agent_config:update",
+  "agent_instructions:update",
+  "agents:configure",
+]);
+
 export type AuthorizationResource =
   | { type: "company"; companyId: string }
   | { type: "agent"; companyId: string; agentId?: string | null }
@@ -145,6 +151,7 @@ export type AuthorizationDecision = {
     | "deny_missing_membership"
     | "deny_missing_grant"
     | "deny_missing_consent"
+  | "deny_board_only_agent_governance"
     | "deny_no_grant"
     | "deny_policy_restricted"
     | "deny_low_trust_boundary"
@@ -2072,6 +2079,15 @@ export function authorizationService(db: Db | DbTransaction) {
         explanation: "Agent key cannot access another company.",
       });
     }
+    // Budget, schedule, model, role, grants and instructions decide what an agent may spend and do,
+    // so no agent identity may change them, its own included. No grant or consent path reaches past this.
+    if (BOARD_ONLY_AGENT_GOVERNANCE_ACTIONS.has(input.action)) {
+      return deny({
+        action: input.action,
+        reason: "deny_board_only_agent_governance",
+        explanation: "Only a board actor can change agent configuration.",
+      });
+    }
 
     const actorAgent = await loadAgent(actorAgentId);
     if (!actorAgent || actorAgent.companyId !== companyId) {
@@ -2414,18 +2430,6 @@ export function authorizationService(db: Db | DbTransaction) {
         return allowIssueMentionGrant(input.action);
       }
       if (visibleIssueWriteDecision) return visibleIssueWriteDecision;
-    }
-    if (
-      input.action === "agent_config:update" &&
-      input.resource.type === "agent" &&
-      input.resource.agentId === actorAgentId &&
-      !scopeBoolean(input.scope, "requiresChangeGrant")
-    ) {
-      return allow({
-        action: input.action,
-        reason: "allow_self",
-        explanation: "Allowed because the actor is updating its own agent configuration.",
-      });
     }
 
     if (input.action === "agent_config:read") {

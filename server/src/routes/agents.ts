@@ -5695,6 +5695,12 @@ export function agentRoutes(
     source: HeartbeatSource | undefined;
     skippedResponse: (agent: NonNullable<Awaited<ReturnType<typeof svc.getById>>>, payload: Record<string, unknown> | null) => unknown | Promise<unknown>;
   };
+  function refuseAgentWake(req: Request, res: Response): boolean {
+    if (req.actor.type !== "agent") return false;
+    res.status(403).json({ error: "Only the board can wake an agent through the API" });
+    return true;
+  }
+
   const handleWakeupRoute = async (
     req: Request,
     res: Response,
@@ -5704,14 +5710,8 @@ export function agentRoutes(
     const agent = await getAccessibleResource(req, res, svc.getById(id), "Agent not found");
     if (!agent) return;
 
-    if (req.actor.type === "agent") {
-      if (req.actor.agentId !== id) {
-        res.status(403).json({ error: "Agent can only invoke itself" });
-        return;
-      }
-    } else {
-      await assertBoardCanWakeAgent(req, agent);
-    }
+    if (refuseAgentWake(req, res)) return;
+    await assertBoardCanWakeAgent(req, agent);
     if (req.body.debug?.providerTrace === "raw") {
       assertInstanceAdmin(req);
     }
@@ -5896,6 +5896,7 @@ export function agentRoutes(
         ? { ...wakePayload, commentId: undefined, wakeCommentId: undefined, wakeCommentIds: undefined }
         : wakePayload,
       idempotencyKey: req.body.idempotencyKey ?? null,
+      callerAdmission: { operationKey: req.body.idempotencyKey?.trim() || null },
       requestedByActorType: req.actor.type === "agent" ? "agent" : "user",
       requestedByActorId: req.actor.type === "agent" ? req.actor.agentId ?? null : req.actor.userId ?? null,
       contextSnapshot: {
@@ -5981,14 +5982,8 @@ export function agentRoutes(
     const agent = await getAccessibleResource(req, res, svc.getById(id), "Agent not found");
     if (!agent) return;
 
-    if (req.actor.type === "agent") {
-      if (req.actor.agentId !== id) {
-        res.status(403).json({ error: "Agent can only invoke itself" });
-        return;
-      }
-    } else {
-      await assertBoardCanWakeAgent(req, agent);
-    }
+    if (refuseAgentWake(req, res)) return;
+    await assertBoardCanWakeAgent(req, agent);
     const providerTraceRequested = req.body?.debug?.providerTrace === "raw";
     if (providerTraceRequested) {
       assertInstanceAdmin(req);
@@ -6027,6 +6022,9 @@ export function agentRoutes(
     }
     const wakeOpts: Parameters<typeof heartbeat.wakeup>[1] = {
       ...(req.actor.type === "board" ? { manualUserWake: true } : {}),
+      callerAdmission: {
+        operationKey: typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim() || null : null,
+      },
       source: "on_demand",
       triggerDetail: typeof body.triggerDetail === "string" ? body.triggerDetail as "manual" | "system" | "ping" | "callback" : "manual",
       requestedByActorType: req.actor.type === "agent" ? "agent" : "user",

@@ -1,3 +1,4 @@
+export { openPostgres } from "./postgres-connection.js";
 export {
   createDb,
   withDedicatedDbConnection,

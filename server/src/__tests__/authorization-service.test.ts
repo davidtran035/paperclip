@@ -313,7 +313,7 @@ describeEmbeddedPostgres("authorization service", () => {
     });
   });
 
-  it("enforces direct or consented suggest grants for agent configuration changes", async () => {
+  it("denies agent configuration changes to agents whatever grant or consent they hold", async () => {
     const company = await createCompany(db, "AgentChangeGrant");
     const directAgent = await createAgent(db, company.id);
     const suggestAgent = await createAgent(db, company.id);
@@ -321,57 +321,18 @@ describeEmbeddedPostgres("authorization service", () => {
     const targetAgent = await createAgent(db, company.id);
     await grantAgentPermission(db, company.id, directAgent.id, "agents:configure");
     await grantAgentPermission(db, company.id, suggestAgent.id, "agents:suggest-changes");
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
-      principalType: "agent",
-      principalId: noGrantAgent.id,
-      status: "active",
-      membershipRole: "member",
-    });
 
     const authz = authorizationService(db);
-    await expect(authz.decide({
-      actor: { type: "agent", agentId: directAgent.id, companyId: company.id, source: "agent_key" },
-      action: "agent_config:update",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
-      scope: { requiresChangeGrant: true },
-    })).resolves.toMatchObject({
-      allowed: true,
-      reason: "allow_direct_change",
-      grant: { permissionKey: "agents:configure" },
-    });
-
-    await expect(authz.decide({
-      actor: { type: "agent", agentId: suggestAgent.id, companyId: company.id, source: "agent_key" },
-      action: "agent_config:update",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
-      scope: { requiresChangeGrant: true },
-    })).resolves.toMatchObject({
-      allowed: false,
-      reason: "deny_missing_consent",
-      grant: { permissionKey: "agents:suggest-changes" },
-    });
-
-    await expect(authz.decide({
-      actor: { type: "agent", agentId: suggestAgent.id, companyId: company.id, source: "agent_key" },
-      action: "agent_config:update",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
-      scope: { requiresChangeGrant: true, consentedChange: true },
-    })).resolves.toMatchObject({
-      allowed: true,
-      reason: "allow_consented_change",
-      grant: { permissionKey: "agents:suggest-changes" },
-    });
-
-    await expect(authz.decide({
-      actor: { type: "agent", agentId: noGrantAgent.id, companyId: company.id, source: "agent_key" },
-      action: "agent_config:update",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
-      scope: { requiresChangeGrant: true },
-    })).resolves.toMatchObject({
-      allowed: false,
-      reason: "deny_no_grant",
-    });
+    for (const actorAgent of [directAgent, suggestAgent, noGrantAgent]) {
+      for (const scope of [{ requiresChangeGrant: true }, { requiresChangeGrant: true, consentedChange: true }]) {
+        await expect(authz.decide({
+          actor: { type: "agent", agentId: actorAgent.id, companyId: company.id, source: "agent_key" },
+          action: "agent_config:update",
+          resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
+          scope,
+        })).resolves.toMatchObject({ allowed: false, reason: "deny_board_only_agent_governance" });
+      }
+    }
   });
 
   it("enforces direct or consented suggest grants for skill configuration changes", async () => {
@@ -1174,7 +1135,7 @@ describeEmbeddedPostgres("authorization service", () => {
       action: "agent_config:update",
       resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
       scope: { requiresChangeGrant: true, consentedChange: true },
-    })).resolves.toMatchObject({ allowed: false, reason: "deny_low_trust_boundary" });
+    })).resolves.toMatchObject({ allowed: false, reason: "deny_board_only_agent_governance" });
 
     await expect(authz.decide({
       actor,

@@ -516,6 +516,7 @@ import {
 import { recoveryService } from "./recovery/service.js";
 import {
   createRunDispatch,
+  wakeMayResumeBlockedIssue,
   type PostCommitEffect,
   MAX_TURN_CONTINUATION_RETRY_REASON,
   WORKSPACE_BUSY_RETRY_REASON,
@@ -778,6 +779,12 @@ export function shouldAutoCheckoutIssueForWake(input: {
   if (executionState?.status === "pending") return false;
 
   const issueStatus = readNonEmptyString(input.issueStatus);
+  if (
+    issueStatus === "blocked" &&
+    !wakeMayResumeBlockedIssue(readNonEmptyString(input.contextSnapshot?.wakeReason))
+  ) {
+    return false;
+  }
   if (
     issueStatus !== "todo" &&
     issueStatus !== "backlog" &&

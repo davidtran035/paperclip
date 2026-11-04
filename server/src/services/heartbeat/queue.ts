@@ -71,6 +71,7 @@ import type { Db } from "@paperclipai/db";
 import { AGENT_DEFAULT_MAX_CONCURRENT_RUNS } from "@paperclipai/shared";
 import {
   agents,
+  agentWakeAdmissions,
   agentWakeupRequests,
   activityLog,
   chatConversations,
@@ -142,7 +143,7 @@ import {
   WORKSPACE_WORKTREE_REQUIRES_PROJECT_REMEDIATION,
 } from "../execution-workspace-policy.js";
 import { readContinuationAttempt } from "../recovery/index.js";
-import { allowsIssueInteractionWake } from "../../modules/run-dispatch/index.js";
+import { allowsIssueInteractionWake, wakeMayResumeBlockedIssue } from "../../modules/run-dispatch/index.js";
 import { withAgentStartLock } from "../agent-start-lock.js";
 import {
   evaluateAgentInvokability,
@@ -2080,7 +2081,76 @@ export function createHeartbeatQueue(db: Db, dependencies: HeartbeatQueueDepende
     return promise;
   }
 
+  async function admitCallerWake(
+    agentId: string,
+    opts: WakeupOptions,
+    operationKey: string | null,
+    executionWaitRequestId?: string,
+  ): Promise<Awaited<ReturnType<typeof getRun>> | null> {
+    const agent = await getAgent(agentId);
+    if (!agent) throw notFound("Agent not found");
+    const source = opts.source ?? "on_demand";
+    const { contextSnapshot, issueIdFromPayload, wakeCommentId } = enrichWakeContextSnapshot({
+      contextSnapshot: { ...(opts.contextSnapshot ?? {}) },
+      reason: opts.reason ?? null,
+      source,
+      triggerDetail: opts.triggerDetail ?? null,
+      payload: opts.payload ? { ...opts.payload } : null,
+    });
+    const issueId = readNonEmptyString(contextSnapshot.issueId) ?? issueIdFromPayload ?? null;
+    const refuse = async (refusal: string) => {
+      await db.insert(agentWakeupRequests).values({
+        companyId: agent.companyId,
+        agentId,
+        source,
+        triggerDetail: opts.triggerDetail ?? null,
+        reason: refusal,
+        payload: opts.payload ?? null,
+        status: "skipped",
+        requestedByActorType: opts.requestedByActorType ?? null,
+        requestedByActorId: opts.requestedByActorId ?? null,
+        finishedAt: new Date(),
+      });
+      logger.info({ agentId, issueId, refusal }, "refused caller wake");
+      return null;
+    };
+
+    if (issueId && !opts.failedRunId && !wakeCommentId && contextSnapshot.resumeIntent !== true) {
+      const issue = await db
+        .select({ status: issues.status })
+        .from(issues)
+        .where(and(eq(issues.id, issueId), eq(issues.companyId, agent.companyId)))
+        .then((rows) => rows[0] ?? null);
+      if (
+        issue &&
+        (issue.status === "done" || issue.status === "cancelled" ||
+          (issue.status === "blocked" && !wakeMayResumeBlockedIssue(readNonEmptyString(contextSnapshot.wakeReason))))
+      ) {
+        return refuse("issue_reopen_required");
+      }
+    }
+    if (!operationKey) return enqueueWakeup(agentId, opts, executionWaitRequestId);
+
+    const [admission] = await db
+      .insert(agentWakeAdmissions)
+      .values({ companyId: agent.companyId, agentId, issueScope: issueId ?? "", operationKey })
+      .onConflictDoNothing()
+      .returning({ id: agentWakeAdmissions.id });
+    if (!admission) return refuse("duplicate_operation_key");
+    try {
+      return await enqueueWakeup(agentId, opts, executionWaitRequestId);
+    } catch (error) {
+      // No run was admitted, so the same key stays usable for a retry.
+      await db.delete(agentWakeAdmissions).where(eq(agentWakeAdmissions.id, admission.id));
+      throw error;
+    }
+  }
+
   async function enqueueWakeup(agentId: string, opts: WakeupOptions = {}, executionWaitRequestId?: string) {
+    if (opts.callerAdmission) {
+      const { callerAdmission, ...admittedOpts } = opts;
+      return admitCallerWake(agentId, admittedOpts, callerAdmission.operationKey, executionWaitRequestId);
+    }
     const source = opts.source ?? "on_demand";
     const triggerDetail = opts.triggerDetail ?? null;
     const contextSnapshot: Record<string, unknown> = {

@@ -17,6 +17,26 @@ describe("shouldAutoCheckoutIssueForWake", () => {
     })).toBe(false);
   });
 
+  it.each(["manual_review", "issue_commented", "issue_status_changed", "issue_unblock_requested"])(
+    "does not restart a blocked task for the %s wake",
+    (wakeReason) => {
+      expect(shouldAutoCheckoutIssueForWake({
+        contextSnapshot: { wakeReason }, issueStatus: "blocked",
+        issueAssigneeAgentId: "agent-1", isDependencyReady: true, agentId: "agent-1",
+      })).toBe(false);
+    },
+  );
+
+  it.each(["issue_blockers_resolved", "issue_children_completed", "approval_approved"])(
+    "resumes a blocked task for the server-issued %s wake",
+    (wakeReason) => {
+      expect(shouldAutoCheckoutIssueForWake({
+        contextSnapshot: { wakeReason }, issueStatus: "blocked",
+        issueAssigneeAgentId: "agent-1", isDependencyReady: true, agentId: "agent-1",
+      })).toBe(true);
+    },
+  );
+
   it("auto-checks out an assigned todo issue for an actionable wake", () => {
     expect(shouldAutoCheckoutIssueForWake({
       contextSnapshot: { wakeReason: "issue_assigned" },

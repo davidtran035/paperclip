@@ -1,22 +1,8 @@
 import { LOW_TRUST_REVIEW_PRESET, type PermissionKey } from "@paperclipai/shared";
 
 /** Direct grants for newly activated standard agents. Existing agents are not backfilled. */
-export const NEW_STANDARD_AGENT_DEFAULT_GRANT_KEYS = [
-  "agents:configure",
-  "agents:suggest-changes",
-  "skills:create",
-  "skills:suggest-changes",
-  "tools:manage_connections",
-  "tools:manage_profiles",
-  "tools:view_audit",
-  "audit:view_agent_actions",
-  "tools:use",
-  "tools:manage_runtime",
-  "inbox:manage",
-  "tasks:assign",
-  "tasks:assign_scope",
-  "tasks:manage_active_checkouts",
-] as const satisfies readonly PermissionKey[];
+// New agents start with no grants: the board grants each authority explicitly.
+export const NEW_STANDARD_AGENT_DEFAULT_GRANT_KEYS: readonly PermissionKey[] = [];
 
 export function newStandardAgentGrantScope(
   permissionKey: PermissionKey,

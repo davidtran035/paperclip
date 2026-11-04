@@ -267,6 +267,31 @@ describe("decideScheduledRetryGate", () => {
 });
 
 describe("decideQueuedRunStaleness", () => {
+  it.each([null, "manual_review", "issue_status_changed"])(
+    "withholds a queued run on a blocked task for the %s wake",
+    (wakeReason) => {
+      expect(decideQueuedRunStaleness(
+        { ...baseStalenessFacts(), issueStatus: "blocked", wakeReason },
+        new Date(),
+      )).toMatchObject({ stale: true, errorCode: "issue_blocked" });
+    },
+  );
+
+  it("lets a server-issued resume wake run on a blocked task", () => {
+    expect(decideQueuedRunStaleness(
+      { ...baseStalenessFacts(), issueStatus: "blocked", wakeReason: "issue_blockers_resolved" },
+      new Date(),
+    )).toEqual({ stale: false });
+  });
+
+  it("withholds an unblock request sent to the blocked task's own assignee", () => {
+    const facts = baseStalenessFacts();
+    expect(decideQueuedRunStaleness(
+      { ...facts, issueStatus: "blocked", wakeReason: "issue_unblock_requested", issueAssigneeAgentId: facts.runAgentId },
+      new Date(),
+    )).toMatchObject({ stale: true, errorCode: "issue_blocked" });
+  });
+
   it("is not stale when every rule passes", () => {
     expect(decideQueuedRunStaleness(baseStalenessFacts(), NOW)).toEqual({
       stale: false,

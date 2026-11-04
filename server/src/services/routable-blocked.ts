@@ -5,6 +5,7 @@ export const ROUTABLE_BLOCKED_ROLLOUT_AT = new Date("2026-07-23T18:13:03.000Z");
 type RoutableBlockedIssue = {
   id: string;
   status: string;
+  assigneeAgentId?: string | null;
   unblockDescriptor?: IssueUnblockDescriptor | null;
   blockedTransitionAt?: Date | null;
   blockedOwnerNotifiedAt?: Date | null;
@@ -40,6 +41,8 @@ export async function deliverAgentUnblockNotification(input: {
 
   const owner = issue.unblockDescriptor.owner;
   if (owner === "board" || !("agentId" in owner)) return false;
+  // The assignee stopped the task itself. Waking it would restart the work it just stopped.
+  if (owner.agentId === issue.assigneeAgentId) return false;
 
   await input.wakeup(owner.agentId, {
     source: "automation",

@@ -692,7 +692,7 @@ describe("issue execution policy routes", () => {
     );
   });
 
-  it("allows an agent-authored in_review transition with a scheduled monitor", async () => {
+  it("refuses an agent-authored in_review transition with a scheduled monitor", async () => {
     const issue = {
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       companyId: "company-1",
@@ -735,15 +735,8 @@ describe("issue execution policy routes", () => {
         },
       });
 
-    expect(res.status).toBe(200);
-    expect(mockIssueService.update).toHaveBeenCalledWith(
-      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      expect.objectContaining({
-        status: "in_review",
-        monitorNextCheckAt: new Date("2026-12-01T12:00:00.000Z"),
-      }),
-      expect.anything(),
-    );
+    expect(res.status).toBe(403);
+    expect(mockIssueService.update).not.toHaveBeenCalled();
   });
 
   it("allows board-authored in_review repair updates without a review path", async () => {
@@ -1187,11 +1180,11 @@ describe("issue execution policy routes", () => {
       });
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe("Only the assignee agent or a board user can manage issue monitors");
+    expect(res.body.error).toBe("Only a board user can manage issue monitors");
     expect(mockIssueService.createChild).not.toHaveBeenCalled();
   });
 
-  it("normalizes spoofed child monitor scheduledBy to the assignee actor", async () => {
+  it("refuses a child monitor created by an agent", async () => {
     mockAccessService.hasPermission.mockResolvedValue(true);
     mockIssueService.getById.mockResolvedValue({
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -1226,19 +1219,7 @@ describe("issue execution policy routes", () => {
         },
       });
 
-    expect(res.status).toBe(201);
-    const createPayload = mockIssueService.createChild.mock.calls[0]?.[1] as {
-      executionPolicy: { monitor: { scheduledBy: string; externalRef: string | null } };
-    };
-    expect(createPayload.executionPolicy.monitor.scheduledBy).toBe("assignee");
-    expect(createPayload.executionPolicy.monitor.externalRef).toBe("[redacted]");
-    expect(mockLogActivity).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        action: "issue.monitor_scheduled",
-        entityId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-        details: expect.not.objectContaining({ externalRef: expect.anything() }),
-      }),
-    );
+    expect(res.status).toBe(403);
+    expect(mockIssueService.createChild).not.toHaveBeenCalled();
   });
-});
+

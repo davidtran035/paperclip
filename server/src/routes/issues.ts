@@ -2256,6 +2256,8 @@ function shouldImplicitlyMoveCommentedIssueToTodo(input: {
   return true;
 }
 
+const STOPPED_ISSUE_STATUSES: ReadonlySet<string> = new Set(["blocked", "done", "cancelled"]);
+
 function shouldHumanCommentResumeInProgressScheduledRetry(input: {
   hasComment: boolean;
   issueStatus: string | null | undefined;
@@ -13629,6 +13631,15 @@ export function issueRoutes(
         onBehalfOfUserId: _requestedOnBehalfOfUserId,
         ...updateFields
       } = req.body;
+      if (
+        req.actor.type === "agent" &&
+        req.actor.agentId === existing.assigneeAgentId &&
+        STOPPED_ISSUE_STATUSES.has(existing.status) &&
+        (reopenRequested === true || resumeRequested === true ||
+          (updateFields.status !== undefined && updateFields.status !== existing.status))
+      ) {
+        throw forbidden("Only the board can reopen a stopped task");
+      }
     if (req.body.visibility === "private" && !existing.projectId && updateFields.projectId === undefined) {
       const responsibleUserId = existing.responsibleUserId ?? (req.actor.type === "board"
         ? req.actor.userId ?? null
@@ -15934,11 +15945,14 @@ export function issueRoutes(
       });
       try {
         updated = await svc.checkout(
-          id,
-          req.body.agentId,
-          req.body.expectedStatuses,
-          checkoutRunId,
-        );
+        id,
+        req.body.agentId,
+        // An agent cannot restart a stopped task. Leaving those statuses out yields the normal 409.
+        req.actor.type === "agent"
+          ? (req.body.expectedStatuses as string[]).filter((status) => !STOPPED_ISSUE_STATUSES.has(status))
+          : req.body.expectedStatuses,
+        checkoutRunId,
+      );
       } catch (error) {
         if (isUniqueViolation(error, "issues_open_routine_execution_uq")) {
           res.status(409).json({
@@ -18205,6 +18219,13 @@ export function issueRoutes(
       const reopenRequested = req.body.reopen === true;
       const resumeRequested = req.body.resume === true;
       const interruptRequested = req.body.interrupt === true;
+      if (
+        req.actor.type === "agent" &&
+        STOPPED_ISSUE_STATUSES.has(issue.status) &&
+        (reopenRequested || resumeRequested)
+      ) {
+        throw forbidden("Only the board can reopen a stopped task");
+      }
       const isClosed = isClosedIssueStatus(issue.status);
       const isBlocked = issue.status === "blocked";
       const crossIssueCommentOnlyGrant =

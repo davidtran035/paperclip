@@ -902,6 +902,15 @@ describe("agent live run routes", () => {
     expect(db.select).toHaveBeenCalledTimes(2);
   });
 
+  it.each(["wakeup", "heartbeat/invoke"])("refuses an agent waking itself through %s", async (route) => {
+    const actor = { type: "agent", agentId: routeAgentId, companyId: "company-1", runId: "run-1", source: "agent_jwt" };
+    const res = await requestApp(await createApp({}, actor), (baseUrl) =>
+      request(baseUrl).post(`/api/agents/${routeAgentId}/${route}?companyId=company-1`).send({ source: "on_demand" }),
+    );
+    expect(res.status).toBe(403);
+    expect(mockHeartbeatService.wakeup).not.toHaveBeenCalled();
+  });
+
   it("passes scoped wake fields through the legacy heartbeat invoke route", async () => {
     const res = await requestApp(await createApp(), (baseUrl) =>
       request(baseUrl)
@@ -924,6 +933,7 @@ describe("agent live run routes", () => {
     // always comes from the authenticated caller.
     expect(mockHeartbeatService.wakeup).toHaveBeenCalledWith(routeAgentId, {
       manualUserWake: true,
+      callerAdmission: { operationKey: null },
       source: "on_demand",
       triggerDetail: "manual",
       reason: "issue_assigned",
@@ -956,6 +966,7 @@ describe("agent live run routes", () => {
     expect(res.status, JSON.stringify(res.body)).toBe(202);
     expect(mockHeartbeatService.wakeup).toHaveBeenCalledWith(routeAgentId, {
       manualUserWake: true,
+      callerAdmission: { operationKey: null },
       source: "on_demand",
       triggerDetail: "manual",
       requestedByActorType: "user",

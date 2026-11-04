@@ -16,7 +16,9 @@ import { resolveManagedInstructionsRoot } from "../services/agent-instructions.j
 import { authorizationService } from "../services/authorization.js";
 import { initializeRunIdentity } from "../services/run-identity.js";
 
-describe("owner-chat instruction authority", () => {
+// Agents cannot change instructions in this build, including their own through owner chat.
+// agent-governance-boundary.test.ts asserts the refusal that replaces this flow.
+describe.skip("owner-chat instruction authority", () => {
   let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
   let db: ReturnType<typeof createDb>;
   let home: string;

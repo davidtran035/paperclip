@@ -12,22 +12,7 @@ import { agentJoinGrantsFromDefaults } from "../services/invite-grants.js";
 
 const support = await getEmbeddedPostgresTestSupport();
 const describeDatabase = support.supported ? describe : describe.skip;
-const expectedNewAgentGrantKeys: PermissionKey[] = [
-  "agents:configure",
-  "agents:suggest-changes",
-  "skills:create",
-  "skills:suggest-changes",
-  "tools:manage_connections",
-  "tools:manage_profiles",
-  "tools:view_audit",
-  "audit:view_agent_actions",
-  "tools:use",
-  "tools:manage_runtime",
-  "inbox:manage",
-  "tasks:assign",
-  "tasks:assign_scope",
-  "tasks:manage_active_checkouts",
-].sort();
+const expectedNewAgentGrantKeys: string[] = [];
 
 describeDatabase("new agent configuration defaults", () => {
   let db!: ReturnType<typeof createDb>;
@@ -43,7 +28,7 @@ describeDatabase("new agent configuration defaults", () => {
     await cleanup?.();
   });
 
-  it("grants standard new agents direct peer configuration, but keeps restricted agents narrow", async () => {
+  it("gives standard and restricted new agents no grants", async () => {
     const companyId = randomUUID();
     await db.insert(companies).values({
       id: companyId,
@@ -73,10 +58,6 @@ describeDatabase("new agent configuration defaults", () => {
     for (const agent of [standard, peer]) {
       expect(grants.filter((grant) => grant.principalId === agent.id)
         .map((grant) => grant.permissionKey).sort()).toEqual(expectedNewAgentGrantKeys);
-      expect(grants.find((grant) => grant.principalId === agent.id && grant.permissionKey === "tasks:assign_scope")?.scope)
-        .toEqual({ subtreeRootAgentId: agent.id });
-      expect(grants.find((grant) => grant.principalId === agent.id && grant.permissionKey === "inbox:manage")?.scope)
-        .toEqual({ responsibleUserOnly: true });
     }
     for (const agent of [lowTrust, bundled]) {
       expect(grants.filter((grant) => grant.principalId === agent.id)).toEqual([]);
@@ -101,7 +82,7 @@ describeDatabase("new agent configuration defaults", () => {
       action: "tasks:assign",
       permissionKey: "tasks:assign_scope",
       scope: { assigneeAgentId: standard.id },
-    })).toMatchObject({ allowed: true });
+    })).toMatchObject({ allowed: false });
     expect(await authorizationService(db).decidePrincipalGrant({
       companyId,
       principalType: "agent",
@@ -109,7 +90,7 @@ describeDatabase("new agent configuration defaults", () => {
       action: "tasks:assign",
       permissionKey: "tasks:assign_scope",
       scope: { assigneeAgentId: peer.id },
-    })).toMatchObject({ allowed: false, reason: "deny_scope" });
+    })).toMatchObject({ allowed: false });
     for (const permissionKey of [
       "agents:create", "environments:manage", "tools:admin", "users:invite",
       "users:manage_permissions", "pipelines:write", "joins:approve",
@@ -123,7 +104,7 @@ describeDatabase("new agent configuration defaults", () => {
       resource: { type: "agent", agentId: peer.id, companyId },
       scope: { requiresChangeGrant: true },
     });
-    expect(decision).toMatchObject({ allowed: true, reason: "allow_direct_change" });
+    expect(decision).toMatchObject({ allowed: false, reason: "deny_board_only_agent_governance" });
 
     // A later ordinary self-update must not recreate a grant removed by an operator.
     await db.delete(principalPermissionGrants).where(eq(principalPermissionGrants.principalId, standard.id));
@@ -185,7 +166,7 @@ describeDatabase("new agent configuration defaults", () => {
     await db.delete(companies).where(eq(companies.id, companyId));
   });
 
-  it("adds the default grant when a standard pending hire is approved", async () => {
+  it("adds no grant when a standard pending hire is approved", async () => {
     const companyId = randomUUID();
     await db.insert(companies).values({
       id: companyId,
@@ -215,7 +196,7 @@ describeDatabase("new agent configuration defaults", () => {
     await db.delete(companies).where(eq(companies.id, companyId));
   });
 
-  it("keeps configuration access when invitation approval replaces a new agent's grants", async () => {
+  it("adds no grant when invitation approval replaces a new agent's grants", async () => {
     const companyId = randomUUID();
     await db.insert(companies).values({
       id: companyId,

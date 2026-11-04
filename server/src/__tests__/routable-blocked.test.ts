@@ -73,4 +73,23 @@ describe("routable blocked notifications", () => {
       idempotencyKey: expect.stringContaining(secondTransition.toISOString()),
     });
   });
+
+  it("does not wake an assignee that named itself as the unblock owner", async () => {
+    const wakeup = vi.fn();
+    const markNotified = vi.fn();
+    await expect(deliverAgentUnblockNotification({
+      issue: {
+        id: "issue-1",
+        status: "blocked",
+        assigneeAgentId: "agent-1",
+        blockedTransitionAt: new Date(),
+        blockedOwnerNotifiedAt: null,
+        unblockDescriptor: { owner: { agentId: "agent-1" }, action: "Review again" },
+      },
+      wakeup,
+      markNotified,
+    })).resolves.toBe(false);
+    expect(wakeup).not.toHaveBeenCalled();
+    expect(markNotified).not.toHaveBeenCalled();
+  });
 });

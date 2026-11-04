@@ -100,9 +100,7 @@ export function routineRoutes(
     assertCompanyAccess(req, companyId);
     if (req.actor.type === "board") return;
     if (req.actor.type !== "agent" || !req.actor.agentId) throw unauthorized();
-    if (assigneeAgentId !== req.actor.agentId) {
-      throw forbidden("Agents can only manage routines assigned to themselves");
-    }
+    throw forbidden("Only the board can manage routines");
   }
 
   async function assertCanManageExistingRoutine(req: Request, routineId: string) {
@@ -111,10 +109,7 @@ export function routineRoutes(
     assertCompanyAccess(req, routine.companyId);
     if (req.actor.type === "board") return routine;
     if (req.actor.type !== "agent" || !req.actor.agentId) throw unauthorized();
-    if (routine.assigneeAgentId !== req.actor.agentId) {
-      throw forbidden("Agents can only manage routines assigned to themselves");
-    }
-    return routine;
+    throw forbidden("Only the board can manage routines");
   }
 
   async function logRoutineRevisionCreated(req: Request, input: {
