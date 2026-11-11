@@ -232,6 +232,12 @@ import type {
 } from "../services/task-watchdogs.js";
 import { logger } from "../middleware/logger.js";
 import {
+  isTaskBridgeCancelOnlyUpdate,
+  parseTaskBridgeRunlessWrites,
+  taskBridgeRunlessWriteAllowed,
+  type TaskBridgeRunlessWrite,
+} from "../services/task-bridge-runless-writes.js";
+import {
   badRequest,
   conflict,
   forbidden,
@@ -4951,6 +4957,26 @@ export function issueRoutes(
       parentIssueId: issue.parentId,
       assigneeAgentId: issue.assigneeAgentId,
       assigneeUserId: issue.assigneeUserId,
+    });
+  }
+
+  const taskBridgeRunlessWrites = parseTaskBridgeRunlessWrites(
+    process.env.PAPERCLIP_TASK_BRIDGE_RUNLESS_WRITES,
+    (message) => logger.warn(message),
+  );
+
+  function taskBridgeRunlessWriteAllowedFor(
+    req: Request,
+    issue: { originKind?: string | null; originId?: string | null },
+    write: TaskBridgeRunlessWrite,
+  ) {
+    return taskBridgeRunlessWriteAllowed({
+      grants: taskBridgeRunlessWrites,
+      isTaskBridgeKey: isTaskBridgeKeyActor(req),
+      keyId: req.actor.keyId,
+      runId: req.actor.runId,
+      issue,
+      write,
     });
   }
 
@@ -13870,8 +13896,20 @@ export function issueRoutes(
           reviewRequest !== undefined ||
           hiddenAtRaw !== undefined);
 
+      const taskBridgeCancelOnly = isTaskBridgeCancelOnlyUpdate({
+        updateFields,
+        hasOtherChanges:
+          reviewRequest !== undefined ||
+          hiddenAtRaw !== undefined ||
+          Boolean(commentBody),
+      });
+
       if (
         isAgentWorkUpdate &&
+        !(
+          taskBridgeCancelOnly &&
+          taskBridgeRunlessWriteAllowedFor(req, existing, "cancel")
+        ) &&
         !(await assertCrossIssueInfluenceWithinRunCap(
           req,
           res,
@@ -18325,6 +18363,7 @@ export function issueRoutes(
         return;
       }
       if (
+        !taskBridgeRunlessWriteAllowedFor(req, issue, "comment") &&
         !(await assertCrossIssueInfluenceWithinRunCap(
           req,
           res,
